@@ -26,6 +26,7 @@ namespace _125GateApp.Pages
         private NumericUpDown nudPollMs;
         private NumericUpDown nudDebounceSec;
         private NumericUpDown nudAutoCloseSec;
+        private NumericUpDown nudAlarmAutoStopSec;
         private CheckBox chkUseAcousto;
         private CheckBox chkUseBuzzer;
         private ComboBox cbGateZone;
@@ -235,15 +236,21 @@ namespace _125GateApp.Pages
             pollRow.Controls.Add(p2);
             tbl.Controls.Add(pollRow, 1, 3);
 
-            AddRowLabel(tbl, 4, "报警联动：");
+            AddRowLabel(tbl, 4, "报警设置：");
             FlowLayoutPanel alarmOpt = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
             chkUseAcousto = new CheckBox { Text = "声光报警(0205)", AutoSize = true, Font = CampusTheme.SmallFont };
             chkUseBuzzer = new CheckBox { Text = "板载蜂鸣(0301)", AutoSize = true, Font = CampusTheme.SmallFont };
-            Button btnSaveCfg = new Button { Text = "保存门禁参数", Width = 104, Height = 25 };
+            Label a1 = new Label { Text = "停警:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
+            nudAlarmAutoStopSec = new NumericUpDown { Minimum = 0, Maximum = 30, Width = 44, Font = CampusTheme.BodyFont };
+            Label a2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(1, 5, 4, 0) };
+            Button btnSaveCfg = new Button { Text = "保存参数", Width = 78, Height = 25 };
             CampusTheme.StylePrimaryButton(btnSaveCfg, CampusTheme.NavyAccent);
             btnSaveCfg.Click += BtnSaveCfg_Click;
             alarmOpt.Controls.Add(chkUseAcousto);
             alarmOpt.Controls.Add(chkUseBuzzer);
+            alarmOpt.Controls.Add(a1);
+            alarmOpt.Controls.Add(nudAlarmAutoStopSec);
+            alarmOpt.Controls.Add(a2);
             alarmOpt.Controls.Add(btnSaveCfg);
             tbl.Controls.Add(alarmOpt, 1, 4);
 
@@ -425,6 +432,7 @@ namespace _125GateApp.Pages
             nudPollMs.Value = ClampNumeric(nudPollMs, _settings.PollIntervalMs);
             nudDebounceSec.Value = ClampNumeric(nudDebounceSec, _settings.DebounceSeconds);
             nudAutoCloseSec.Value = ClampNumeric(nudAutoCloseSec, _settings.AutoCloseSeconds);
+            nudAlarmAutoStopSec.Value = ClampNumeric(nudAlarmAutoStopSec, _settings.AlarmAutoStopSeconds);
             chkUseAcousto.Checked = _settings.EnableAcoustoAlarm;
             chkUseBuzzer.Checked = _settings.EnableOnboardBuzzer;
 
@@ -529,6 +537,7 @@ namespace _125GateApp.Pages
             _settings.PollIntervalMs = (int)nudPollMs.Value;
             _settings.DebounceSeconds = (int)nudDebounceSec.Value;
             _settings.AutoCloseSeconds = (int)nudAutoCloseSec.Value;
+            _settings.AlarmAutoStopSeconds = (int)nudAlarmAutoStopSec.Value;
             _settings.EnableAcoustoAlarm = chkUseAcousto.Checked;
             _settings.EnableOnboardBuzzer = chkUseBuzzer.Checked;
             _settings.CurrentGateZone = cbGateZone.Text;

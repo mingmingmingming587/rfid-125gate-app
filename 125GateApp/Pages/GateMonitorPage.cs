@@ -17,12 +17,15 @@ namespace _125GateApp.Pages
         private Timer _pollTimer;
         private Timer _autoCloseTimer;
         private Timer _alarmFlashTimer;
+        private Timer _alarmAutoStopTimer;
 
         private bool _isDoorOpen = false;
         private bool _isAlarming = false;
         private bool _alarmFlashState = false;
         private int _autoCloseRemaining = 0;
+        private int _alarmRemaining = 0;
         private string _lastDebouncedCard = string.Empty;
+        private string _lastDeniedCard = string.Empty;
         private DateTime _lastSwipeTime = DateTime.MinValue;
         private string _pendingSwipeSource = "硬件读卡";
         private bool _awaitingPollResponse = false;
@@ -85,6 +88,10 @@ namespace _125GateApp.Pages
                 _alarmFlashState = !_alarmFlashState;
                 if (pnlGateCanvas != null) pnlGateCanvas.Invalidate();
             };
+
+            _alarmAutoStopTimer = new Timer();
+            _alarmAutoStopTimer.Interval = 1000;
+            _alarmAutoStopTimer.Tick += AlarmAutoStopTimer_Tick;
         }
 
         private void InitializeLayout()
@@ -517,6 +524,11 @@ namespace _125GateApp.Pages
             _pollTimer.Stop();
             _autoCloseTimer.Stop();
             _alarmFlashTimer.Stop();
+            _alarmAutoStopTimer.Stop();
+            if (_isAlarming)
+            {
+                StopAlarmVisualAndDevice(true);
+            }
         }
 
         private void PollTimer_Tick(object sender, EventArgs e)
@@ -584,6 +596,10 @@ namespace _125GateApp.Pages
 
             if (!e.CardFound)
             {
+                // 卡片移开感应区（0xFF）时重置防连刷状态，下次放卡可立即响应
+                _lastDebouncedCard = string.Empty;
+                _lastDeniedCard = string.Empty;
+
                 // 无卡 0xFF 正常忽略（如果是手动单次点击，提示未检测到卡，绝不误触发报警）
                 if (!chkAutoPoll.Checked)
                 {
@@ -594,12 +610,18 @@ namespace _125GateApp.Pages
                 return;
             }
 
-            // 自动轮询防连刷去抖
-            if (chkAutoPoll.Checked &&
-                string.Equals(e.CardNumber, _lastDebouncedCard, StringComparison.OrdinalIgnoreCase) &&
-                (DateTime.Now - _lastSwipeTime).TotalSeconds < Math.Max(1, _settings.DebounceSeconds))
+            // 自动轮询防连刷去抖：合法卡按去抖秒数防连刷；同一张被拦截的非法卡一直贴着不移开时，避免反复循环拉响警报
+            if (chkAutoPoll.Checked)
             {
-                return;
+                if (string.Equals(e.CardNumber, _lastDeniedCard, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+                if (string.Equals(e.CardNumber, _lastDebouncedCard, StringComparison.OrdinalIgnoreCase) &&
+                    (DateTime.Now - _lastSwipeTime).TotalSeconds < Math.Max(1, _settings.DebounceSeconds))
+                {
+                    return;
+                }
             }
 
             _lastDebouncedCard = e.CardNumber;
@@ -640,7 +662,9 @@ namespace _125GateApp.Pages
 
             if (decision.Granted)
             {
-                StopAlarmVisualAndDevice(false);
+                _lastDeniedCard = string.Empty;
+                // 若此前正在报警，刷合法卡放行时立即下发硬件停警指令
+                StopAlarmVisualAndDevice(_isAlarming);
                 SetBanner(decision.Reason, CampusTheme.SuccessGreen, CampusTheme.SuccessSoft);
 
                 int angle = GetSelectedAngle();
@@ -656,11 +680,9 @@ namespace _125GateApp.Pages
             }
             else
             {
+                _lastDeniedCard = cardNumber;
                 SetDoorOpenState(false);
-                _isAlarming = true;
-                _alarmFlashTimer.Start();
-                SetBanner("拦截报警：" + decision.Reason, CampusTheme.DangerRed, CampusTheme.DangerSoft);
-                TriggerHardwareAlarms(true);
+                StartAlarmWithAutoStop(decision.Reason);
             }
 
             AccessLogEntry log = new AccessLogEntry
@@ -707,7 +729,7 @@ namespace _125GateApp.Pages
 
         private void BtnManualOpen_Click(object sender, EventArgs e)
         {
-            StopAlarmVisualAndDevice(false);
+            StopAlarmVisualAndDevice(_isAlarming);
             string err;
             if (_protocol.ControlStepMotor(0x01, GetSelectedAngle(), out err))
             {
@@ -738,6 +760,42 @@ namespace _125GateApp.Pages
             }
         }
 
+        private void StartAlarmWithAutoStop(string reason)
+        {
+            _alarmAutoStopTimer.Stop();
+            _isAlarming = true;
+            _alarmFlashTimer.Start();
+            SetBanner("拦截报警：" + reason, CampusTheme.DangerRed, CampusTheme.DangerSoft);
+            TriggerHardwareAlarms(true);
+
+            if (_settings.AlarmAutoStopSeconds > 0)
+            {
+                _alarmRemaining = _settings.AlarmAutoStopSeconds;
+                _alarmAutoStopTimer.Start();
+            }
+            else
+            {
+                _alarmRemaining = 0;
+            }
+            UpdateCountdownLabel();
+            pnlGateCanvas.Invalidate();
+        }
+
+        private void AlarmAutoStopTimer_Tick(object sender, EventArgs e)
+        {
+            _alarmRemaining--;
+            if (_alarmRemaining <= 0)
+            {
+                _alarmAutoStopTimer.Stop();
+                StopAlarmVisualAndDevice(true);
+                SetBanner("报警提示已自动停止，门禁恢复待机", CampusTheme.NavyHeader, CampusTheme.InfoSoft);
+            }
+            else
+            {
+                UpdateCountdownLabel();
+            }
+        }
+
         private void BtnStopAlarm_Click(object sender, EventArgs e)
         {
             StopAlarmVisualAndDevice(true);
@@ -746,6 +804,8 @@ namespace _125GateApp.Pages
 
         private void StopAlarmVisualAndDevice(bool sendOffCommand)
         {
+            _alarmAutoStopTimer.Stop();
+            _alarmRemaining = 0;
             _isAlarming = false;
             _alarmFlashState = false;
             _alarmFlashTimer.Stop();
@@ -760,13 +820,28 @@ namespace _125GateApp.Pages
         private void TriggerHardwareAlarms(bool turnOn)
         {
             string err;
-            if (_settings.EnableAcoustoAlarm)
+            if (turnOn)
             {
-                _protocol.ControlAcoustoAlarm(turnOn, out err);
+                if (_settings.EnableAcoustoAlarm)
+                {
+                    _protocol.ControlAcoustoAlarm(true, out err);
+                }
+                if (_settings.EnableOnboardBuzzer)
+                {
+                    _protocol.ControlOnboardBuzzer(true, out err);
+                }
             }
-            if (_settings.EnableOnboardBuzzer)
+            else
             {
-                _protocol.ControlOnboardBuzzer(turnOn, out err);
+                // 停止报警时优先发送声光报警器关闭指令（板载蜂鸣器在固件中滴3声后自停，必要时也一并静音）
+                if (_settings.EnableAcoustoAlarm)
+                {
+                    _protocol.ControlAcoustoAlarm(false, out err);
+                }
+                if (_settings.EnableOnboardBuzzer)
+                {
+                    _protocol.ControlOnboardBuzzer(false, out err);
+                }
             }
         }
 
@@ -851,7 +926,9 @@ namespace _125GateApp.Pages
             string doorText;
             if (_isAlarming)
             {
-                doorText = "声光报警拦截中";
+                doorText = _alarmRemaining > 0
+                    ? string.Format("声光报警拦截中（{0} 秒后自动停止）", _alarmRemaining)
+                    : "声光报警拦截中（请点击停止报警）";
             }
             else if (_isDoorOpen)
             {

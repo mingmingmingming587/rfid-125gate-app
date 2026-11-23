@@ -66,8 +66,20 @@ namespace _125GateApp.Services
 
         private readonly Random _rng = new Random();
         private readonly object _serialLock = new object();
+        private readonly Queue<PendingTx> _txQueue = new Queue<PendingTx>();
+        private readonly AutoResetEvent _txSignal = new AutoResetEvent(false);
+        private readonly Thread _txWorker;
+        private DateTime _lastSerialWriteUtc = DateTime.MinValue;
+        private const int Rs485InterFrameMs = 80;
         private bool _serialHooked = false;
-        private bool _disposed = false;
+        private volatile bool _disposed = false;
+
+        private class PendingTx
+        {
+            public byte[] Frame;
+            public string Hex;
+            public string Description;
+        }
 
         private CardReadSource _pendingReadSource = CardReadSource.GateMonitorTab;
         private byte _lastMotorDirection = 0x01;
@@ -104,6 +116,11 @@ namespace _125GateApp.Services
             SimulatedCardNumber = "0006849456";
             SimulateNoCard = false;
             SimulateMotorFault = false;
+
+            _txWorker = new Thread(SerialTxWorkerLoop);
+            _txWorker.IsBackground = true;
+            _txWorker.Name = "RS485TxWorker";
+            _txWorker.Start();
         }
 
         public static string[] GetAvailablePorts()
@@ -531,15 +548,65 @@ namespace _125GateApp.Services
             {
                 lock (_serialLock)
                 {
-                    ComHelper.sp.Write(frame, 0, frame.Length);
+                    _txQueue.Enqueue(new PendingTx
+                    {
+                        Frame = frame,
+                        Hex = hex,
+                        Description = description
+                    });
                 }
-                RaiseFrameSent(hex, description);
+                _txSignal.Set();
                 return true;
             }
             catch (Exception ex)
             {
                 errorMsg = string.Format("发送串口指令失败: {0}", ex.Message);
                 return false;
+            }
+        }
+
+        private void SerialTxWorkerLoop()
+        {
+            while (!_disposed)
+            {
+                PendingTx next = null;
+                lock (_serialLock)
+                {
+                    if (_txQueue.Count > 0)
+                    {
+                        next = _txQueue.Dequeue();
+                    }
+                }
+
+                if (next == null)
+                {
+                    _txSignal.WaitOne(100);
+                    continue;
+                }
+
+                // 保证 RS485 半双工总线上连续两帧至少间隔 80ms，防止从机回传 ACK 与下一帧指令碰撞丢包
+                double elapsedMs = (DateTime.UtcNow - _lastSerialWriteUtc).TotalMilliseconds;
+                if (elapsedMs < Rs485InterFrameMs)
+                {
+                    int waitMs = (int)Math.Ceiling(Rs485InterFrameMs - elapsedMs);
+                    if (waitMs > 0)
+                    {
+                        Thread.Sleep(waitMs);
+                    }
+                }
+
+                try
+                {
+                    if (ComHelper.sp != null && ComHelper.sp.IsOpen)
+                    {
+                        ComHelper.sp.Write(next.Frame, 0, next.Frame.Length);
+                        _lastSerialWriteUtc = DateTime.UtcNow;
+                        RaiseFrameSent(next.Hex, next.Description);
+                    }
+                }
+                catch
+                {
+                }
             }
         }
 
@@ -664,7 +731,19 @@ namespace _125GateApp.Services
 
         public void Dispose()
         {
+            // 等待少量未发完的关报警等收尾帧发出后再关闭串口
+            for (int i = 0; i < 6; i++)
+            {
+                int remaining;
+                lock (_serialLock)
+                {
+                    remaining = _txQueue.Count;
+                }
+                if (remaining == 0) break;
+                Thread.Sleep(60);
+            }
             _disposed = true;
+            _txSignal.Set();
             ClosePort();
         }
     }
