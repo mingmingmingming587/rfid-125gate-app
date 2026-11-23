@@ -18,6 +18,7 @@ namespace _125GateApp
         public Form125GateApp()
         {
             InitializeComponent();
+            SetupExtraPages();
         }
         private bool isDoor = false;
 
@@ -31,8 +32,7 @@ namespace _125GateApp
             //string path = finfo.DirectoryName;
             //webBrowser1.Navigate(path + "/实验原理.html");
             //webBrowser2.Navigate(path + "/关键代码.html");
-            JObject o = ComHelper.Readjson();
-            Init_Com(o["COM"].ToString(), int.Parse(o["BAUD"].ToString()));
+            // 串口由设备连接页面显式选择并打开。
         }
 
 
@@ -158,7 +158,7 @@ namespace _125GateApp
                         foreach (JObject j in ja)
                         {
 
-                            if (j["cardnum"].ToString().Equals(lbDoorCard.Text))
+                            if (j["cardnum"].ToString().Equals(lbDoorCard.Text) && (bool?)j["enabled"] != false)
                             {
                                 lbName.Text = j["name"].ToString();
                                 lbSex.Text = j["sex"].ToString();
@@ -217,10 +217,7 @@ namespace _125GateApp
 
         private void tabControl2_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (tabControl2.SelectedIndex == 0)
-                isDoor = false;
-            else
-                isDoor = true;
+            isDoor = tabControl2.SelectedTab == tabPage5;
         }
 
      
@@ -228,7 +225,7 @@ namespace _125GateApp
         private void btnZC_Click(object sender, EventArgs e)
         {
             lbZCState.Text = "....";
-            if (!tbName.Text.Equals("") && !tbNum.Text.Equals("") && cbSex.SelectedIndex != -1)
+            if (!string.IsNullOrWhiteSpace(lbCardZC.Text) && lbCardZC.Text != "..." && lbCardZC.Text != "...." && !tbName.Text.Equals("") && !tbNum.Text.Equals("") && cbSex.SelectedIndex != -1)
             {
                 if (JsonFormat.AddJson(lbCardZC.Text, tbName.Text, tbNum.Text, cbSex.Text))
                     lbZCState.Text = "注册成功";
@@ -253,6 +250,7 @@ namespace _125GateApp
 
         private void llDoorGetCard_Click(object sender, EventArgs e)
         {
+            if (!DeviceReady()) return;
             lbNum.Text = "...";
             lbName.Text = "...";
             lbSex.Text = "...";
@@ -271,6 +269,7 @@ namespace _125GateApp
 
         private void llZCGetCard_Click(object sender, EventArgs e)
         {
+            if (!DeviceReady()) return;
             lbCardZC.Text = "...";
             Random r = new Random();
             byte comTpye = ConsumeType.getType(ConsumeType.RS485, ConsumeType.WIRED);

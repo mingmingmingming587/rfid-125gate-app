@@ -13,8 +13,10 @@ namespace _125GateApp
 
         public static JArray ReadSensorJson()
         {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugin", "125GateApp", "db.json");
+            if (!File.Exists(path)) return new JArray();
             //string jsonfile = System.Environment.CurrentDirectory + "/Configs.json";
-            string jsonfile = System.Environment.CurrentDirectory + "/plugin/125GateApp/db.json";
+            string jsonfile = path;
             using (System.IO.StreamReader file = System.IO.File.OpenText(jsonfile))
             {
                 using (JsonTextReader reader = new JsonTextReader(file))
@@ -41,7 +43,9 @@ namespace _125GateApp
             {
                 JArray ja = null;
                 bool b = false;
-                string jsonfile = System.Environment.CurrentDirectory + "/plugin/125GateApp/db.json";
+                string jsonfile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugin", "125GateApp", "db.json");
+                Directory.CreateDirectory(Path.GetDirectoryName(jsonfile));
+                if (!File.Exists(jsonfile)) File.WriteAllText(jsonfile, "[]");
                 string json = File.ReadAllText(jsonfile);
                 if (!json.Equals(""))
 
