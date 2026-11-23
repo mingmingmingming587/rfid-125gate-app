@@ -1,291 +1,318 @@
-﻿using Interfaces;
-using Newtonsoft.Json.Linq;
+﻿using _125GateApp.Models;
+using _125GateApp.Pages;
+using _125GateApp.Services;
+using _125GateApp.UI;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.IO.Ports;
-using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace _125GateApp
 {
     public partial class Form125GateApp : Form
     {
+        private GateProtocolService _protocol;
+        private AppSettings _settings;
+
+        private RegisterPage _registerPage;
+        private GateMonitorPage _monitorPage;
+        private CardManagementPage _managePage;
+        private AccessLogsPage _logsPage;
+        private DeviceDebugPage _debugPage;
+
+        private bool _protocolExpanded = true;
+
         public Form125GateApp()
         {
             InitializeComponent();
-            SetupExtraPages();
         }
-        private bool isDoor = false;
 
         private void Form125GateApp_Load(object sender, EventArgs e)
         {
-            string path = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            path = System.IO.Path.GetDirectoryName(path);
+            JsonFormat.EnsureInitialized();
+            _settings = JsonFormat.LoadSettings();
+            _protocol = new GateProtocolService();
+            _protocol.IsSimulationMode = _settings.SimulationMode;
 
-            //获取到文件所在目录
-            //FileInfo finfo = new FileInfo(s);
-            //string path = finfo.DirectoryName;
-            //webBrowser1.Navigate(path + "/实验原理.html");
-            //webBrowser2.Navigate(path + "/关键代码.html");
-            // 串口由设备连接页面显式选择并打开。
+            WireProtocolEvents();
+            InitializePages();
+            InitializeHardwareOrSimulation();
+            UpdateHeaderStatus();
         }
 
-
-        public void Init_Com(string name, int baud)
+        private void InitializePages()
         {
+            _registerPage = new RegisterPage(_protocol);
+            _monitorPage = new GateMonitorPage(_protocol, _settings);
+            _managePage = new CardManagementPage();
+            _logsPage = new AccessLogsPage();
+            _debugPage = new DeviceDebugPage(_protocol, _settings);
 
-            if (ComHelper.openPort(name, baud))
+            tabPageRegister.Controls.Add(_registerPage);
+            tabPageMonitor.Controls.Add(_monitorPage);
+            tabPageManage.Controls.Add(_managePage);
+            tabPageLogs.Controls.Add(_logsPage);
+            tabPageDebug.Controls.Add(_debugPage);
+
+            _registerPage.CardsChanged += delegate
             {
-                //MessageBox.Show("串口打开成功");
-                ComHelper.sp.DataReceived += new SerialDataReceivedEventHandler(sp_DataReceived);
-            }
+                _managePage.RefreshGrid();
+                _monitorPage.RefreshSimulationDropdown();
+            };
+
+            _managePage.CardsChanged += delegate
+            {
+                _registerPage.RefreshRecentList();
+                _monitorPage.RefreshSimulationDropdown();
+            };
+
+            _monitorPage.LogsUpdated += delegate
+            {
+                _logsPage.RefreshData();
+            };
+
+            _monitorPage.RequestEnableSimulation += delegate
+            {
+                SetSimulationMode(true);
+            };
+
+            _debugPage.ModeOrConnectionChanged += delegate
+            {
+                UpdateHeaderStatus();
+            };
+
+            _debugPage.SettingsUpdated += delegate
+            {
+                _monitorPage.SyncSettings();
+                UpdateHeaderStatus();
+            };
+
+            _registerPage.StatusMessage += delegate(object s, string msg) { lblAppSub.Text = "状态通知：" + msg; };
+            _monitorPage.StatusMessage += delegate(object s, string msg) { lblAppSub.Text = "门禁动态：" + msg; };
+            _managePage.StatusMessage += delegate(object s, string msg) { lblAppSub.Text = "卡务管理：" + msg; };
+            _logsPage.StatusMessage += delegate(object s, string msg) { lblAppSub.Text = "日志统计：" + msg; };
+            _debugPage.StatusMessage += delegate(object s, string msg) { lblAppSub.Text = "设备调试：" + msg; };
         }
 
-        private void sp_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        private void WireProtocolEvents()
         {
-            try
+            _protocol.FrameSent += delegate(object s, ProtocolFrameEventArgs args)
             {
-                Thread.Sleep(50);
-                //MessageBox.Show("124");//
-                int len = ComHelper.sp.BytesToRead;
-                if (len > 0)
+                SafeUiInvoke(delegate
                 {
-                    byte[] recbuf = new byte[len];
-                    ComHelper.sp.Read(recbuf, 0, len);//读取
-                    //updateMsgsBox(Protocol.byteToHexString(recbuf));
-                    List<byte[]> list = Protocol.bytesHandle(recbuf, len);
-                    foreach (byte[] buf in list)
-                    {
-                        ProtocolModel p = Protocol.byteToProtocolModel(buf, buf.Length);//格式化转换
-                        //判断温度
-                        if (p != null)
-                        {
-                            //判断是否为光线回复信息
-                            if (p.OrderCode[0] == Protocol.SingleCard_ACK[0] && p.OrderCode[1] == Protocol.SingleCard_ACK[1])
-                            {
-                                updateValues(p);
-                            }
-                            else if (p.OrderCode[0] == Protocol.STEPMOTOR_ACK[0] && p.OrderCode[1] == Protocol.STEPMOTOR_ACK[1])
-                            {
-                                updateValues(p);
-                            }
-                            else if (p.OrderCode[0] == Protocol.ACOUSTOALARM_ACK[0] && p.OrderCode[1] == Protocol.ACOUSTOALARM_ACK[1])
-                            {
-                                updateValues(p);
-                            }
-                            updateMsgsBox(Protocol.byteToHexString(buf));
-                        }
-                    }
-                }
-            }
-            catch
-            { }
+                    AppendProtocolLine(tbSend, string.Format("[{0}] {1} -> {2}", DateTime.Now.ToString("HH:mm:ss"), args.Description, args.HexText));
+                });
+            };
 
-        }
-
-
-        delegate void upateValue(ProtocolModel p);
-
-        delegate void updateMsgBox(string hexbuf);
-        private void updateMsgsBox(string hexbuf)
-        {
-            tbMsg.Invoke(new updateMsgBox((msg) =>
+            _protocol.FrameReceived += delegate(object s, ProtocolFrameEventArgs args)
             {
-                if (tbMsg.Lines.GetUpperBound(0) >= 200)
-                    tbMsg.Text = "";
+                SafeUiInvoke(delegate
+                {
+                    AppendProtocolLine(tbMsg, string.Format("[{0}] {1} <- {2}", DateTime.Now.ToString("HH:mm:ss"), args.Description, args.HexText));
+                });
+            };
 
-                tbMsg.AppendText(msg + "\n");
-            }), hexbuf);
-
-
-
-        }
-
-        private void updateValues(ProtocolModel p)
-        {
-
-            panel1.Invoke(new upateValue((msg) =>
+            _protocol.CardReadCompleted += delegate(object s, CardReadEventArgs args)
             {
-                byte[] content = msg.Content;
-
-                //door
-                 if (p.OrderCode[0] == Protocol.STEPMOTOR_ACK[0] && p.OrderCode[1] == Protocol.STEPMOTOR_ACK[1])
+                SafeUiInvoke(delegate
                 {
-                    if (content[2] == 0x01)
+                    if (args.Source == CardReadSource.RegisterTab)
                     {
-
-                        lbDoorState.Text = "开门成功";
+                        _registerPage.HandleCardRead(args);
                     }
-                    else if (content[2] == (byte)0xFF)
+                    else if (args.Source == CardReadSource.DebugTab)
                     {
-
-                        lbDoorState.Text = "门打开失败，检测硬件传感器";
-                    }
-
-                }
-
-                if (p.OrderCode[0] == Protocol.ACOUSTOALARM_ACK[0] && p.OrderCode[1] == Protocol.ACOUSTOALARM_ACK[1])
-                {
-                    if (content[2] == 0x01)
-                    {
-                        lbDoorState.Text = "开门失败，该卡未录入";
-
-                    }
-                    else if (content[2] == (byte)0xFF)
-                    {
-
-                        lbDoorState.Text = "声光报警器打开失败";
-                    }
-                }
-
-
-                if (p.OrderCode[0] == Protocol.SingleCard_ACK[0] && p.OrderCode[1] == Protocol.SingleCard_ACK[1])
-                {
-                    if (isDoor == false)
-                    {
-                        lbCardZC.Text = Protocol.BytesToString(content);
+                        _debugPage.HandleDebugCardRead(args);
                     }
                     else
                     {
-                        bool isFindNum = false;
-                        lbDoorCard.Text = Protocol.BytesToString(content);
-                        JArray ja = JsonFormat.ReadSensorJson();
-                        foreach (JObject j in ja)
-                        {
-
-                            if (j["cardnum"].ToString().Equals(lbDoorCard.Text) && (bool?)j["enabled"] != false)
-                            {
-                                lbName.Text = j["name"].ToString();
-                                lbSex.Text = j["sex"].ToString();
-                                isFindNum = true;
-                                lbNum.Text = j["stuid"].ToString();
-                                break;
-                            }
-
-                        }
-                        //Thread.Sleep(1000);
-                        if (isFindNum) ///成功开门
-                        {
-                            ControlStepMotor((byte)0x01, 90);
-                        }
-                        else //失败报警
-                        {
-                            Random r = new Random();
-                            byte comTpye = ConsumeType.getType(ConsumeType.RS485, ConsumeType.WIRED);
-                            byte order = Protocol.getOrder(true, false, false, 2, false);
-                            byte[] local = new byte[4];
-                            byte[] target = { 0x00, 0x00, 0x02, 0x05 };
-
-                            byte[] contentA = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-                            byte[] buf = Protocol.sendMsg(comTpye, order, (byte)r.Next(100), local, target, Protocol.ACOUSTOALARM_REQ, contentA);
-                            tbSend.AppendText(Protocol.byteToHexString(buf) + "\n");
-                            ComHelper.sp.Write(buf, 0, buf.Length);
-                        }
-
+                        _monitorPage.HandleCardRead(args);
                     }
-                }
-                // lbCardMsg.Text = Protocol.BytesToString(content);
+                });
+            };
 
-
-            }), p);
-
-        }
-
-        private void ControlStepMotor(byte func, int angle)
-        {
-            Random r = new Random();
-            byte comTpye = ConsumeType.getType(ConsumeType.RS485, ConsumeType.WIRED);
-            byte order = Protocol.getOrder(true, false, false, 2, false);
-            byte[] local = new byte[4];
-            byte[] target = { 0x00, 0x00, 0x02, 0x0B };
-
-
-            byte[] content = new byte[11];
-            content[0] = func;
-            content[1] = (byte)(angle >> 8);
-            content[2] = (byte)angle;
-            byte[] buf = Protocol.sendMsg(comTpye, order, (byte)r.Next(100), local, target, Protocol.STEPMOTOR_REQ, content);
-            tbSend.AppendText(Protocol.byteToHexString(buf)+"\n");
-            ComHelper.sp.Write(buf, 0, buf.Length);
-        }
-
-
-        private void tabControl2_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            isDoor = tabControl2.SelectedTab == tabPage5;
-        }
-
-     
-
-        private void btnZC_Click(object sender, EventArgs e)
-        {
-            lbZCState.Text = "....";
-            if (!string.IsNullOrWhiteSpace(lbCardZC.Text) && lbCardZC.Text != "..." && lbCardZC.Text != "...." && !tbName.Text.Equals("") && !tbNum.Text.Equals("") && cbSex.SelectedIndex != -1)
+            _protocol.MotorActionCompleted += delegate(object s, MotorResultEventArgs args)
             {
-                if (JsonFormat.AddJson(lbCardZC.Text, tbName.Text, tbNum.Text, cbSex.Text))
-                    lbZCState.Text = "注册成功";
-                else
-                    lbZCState.Text = "注册失败";
-            }
-            else {
+                SafeUiInvoke(delegate
+                {
+                    _monitorPage.HandleMotorAck(args);
+                    _debugPage.HandleMotorOrAlarmResult(args.Message, args.Success);
+                });
+            };
 
-                lbZCState.Text = "先填写信息";
+            _protocol.AlarmActionCompleted += delegate(object s, AlarmResultEventArgs args)
+            {
+                SafeUiInvoke(delegate
+                {
+                    _monitorPage.HandleAlarmAck(args);
+                    _debugPage.HandleMotorOrAlarmResult(args.Message, args.Success);
+                });
+            };
+
+            _protocol.DeviceCommandCompleted += delegate(object s, DeviceCommandResultEventArgs args)
+            {
+                SafeUiInvoke(delegate
+                {
+                    _debugPage.HandleDeviceCommandResult(args);
+                });
+            };
+
+            _protocol.ConnectionStatusChanged += delegate
+            {
+                SafeUiInvoke(UpdateHeaderStatus);
+            };
+        }
+
+        private void InitializeHardwareOrSimulation()
+        {
+            if (_protocol.IsSimulationMode)
+            {
+                _debugPage.SyncSimulationModeFromHost();
+                return;
             }
+
+            ComConfig cfg = JsonFormat.LoadComConfig();
+            string err;
+            if (!_protocol.OpenPort(cfg.COM, cfg.BAUD, out err))
+            {
+                lblAppSub.Text = "提示：未连接到 " + cfg.COM + "，可点击右上角【切换仿真模式】进行无硬件实验演示";
+            }
+            _debugPage.LoadCurrentSettingsToUI();
+        }
+
+        private void SetSimulationMode(bool enable)
+        {
+            _protocol.IsSimulationMode = enable;
+            _settings.SimulationMode = enable;
+            JsonFormat.SaveSettings(_settings);
+            _debugPage.SyncSimulationModeFromHost();
+            UpdateHeaderStatus();
+        }
+
+        private void UpdateHeaderStatus()
+        {
+            if (_protocol == null) return;
+
+            if (_protocol.IsSimulationMode)
+            {
+                lblConnBadge.Text = "当前模式：无硬件仿真测试";
+                lblConnBadge.BackColor = Color.FromArgb(67, 56, 202);
+                lblConnBadge.ForeColor = Color.White;
+                btnQuickSimToggle.Text = "切回实机串口";
+                btnQuickSimToggle.BackColor = CampusTheme.SuccessGreen;
+            }
+            else if (_protocol.IsPortOpen)
+            {
+                lblConnBadge.Text = string.Format("实机在线：{0} ({1})", _protocol.CurrentPortName, _protocol.CurrentBaudRate);
+                lblConnBadge.BackColor = CampusTheme.SuccessGreen;
+                lblConnBadge.ForeColor = Color.White;
+                btnQuickSimToggle.Text = "切换仿真模式";
+                btnQuickSimToggle.BackColor = Color.FromArgb(79, 70, 229);
+            }
+            else
+            {
+                lblConnBadge.Text = "实机串口未连接";
+                lblConnBadge.BackColor = CampusTheme.WarningAmber;
+                lblConnBadge.ForeColor = Color.White;
+                btnQuickSimToggle.Text = "切换仿真模式";
+                btnQuickSimToggle.BackColor = Color.FromArgb(79, 70, 229);
+            }
+        }
+
+        private void btnQuickSimToggle_Click(object sender, EventArgs e)
+        {
+            bool nextSim = !_protocol.IsSimulationMode;
+            SetSimulationMode(nextSim);
+
+            if (!nextSim && !_protocol.IsPortOpen)
+            {
+                ComConfig cfg = JsonFormat.LoadComConfig();
+                string err;
+                if (!_protocol.OpenPort(cfg.COM, cfg.BAUD, out err))
+                {
+                    lblAppSub.Text = err;
+                }
+                _debugPage.LoadCurrentSettingsToUI();
+            }
+        }
+
+        private void btnToggleProtocol_Click(object sender, EventArgs e)
+        {
+            _protocolExpanded = !_protocolExpanded;
+            panel2.Visible = _protocolExpanded;
+            btnToggleProtocol.Text = _protocolExpanded ? "折叠协议区" : "展开协议区";
+        }
+
+        private void tabMain_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (tabMain.SelectedTab == tabPageManage)
+            {
+                _managePage.RefreshGrid();
+            }
+            else if (tabMain.SelectedTab == tabPageLogs)
+            {
+                _logsPage.RefreshData();
+            }
+            else if (tabMain.SelectedTab == tabPageMonitor)
+            {
+                _monitorPage.RefreshSimulationDropdown();
+                _monitorPage.RefreshRecentLogs();
+            }
+            else if (tabMain.SelectedTab == tabPageRegister)
+            {
+                _registerPage.RefreshRecentList();
+            }
+        }
+
+        private void SafeUiInvoke(MethodInvoker action)
+        {
+            if (this.IsDisposed || !this.IsHandleCreated) return;
+            try
+            {
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke(action);
+                }
+                else
+                {
+                    action();
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static void AppendProtocolLine(TextBox tb, string line)
+        {
+            if (tb.Lines.Length >= 200)
+            {
+                tb.Clear();
+            }
+            tb.AppendText(line + Environment.NewLine);
+            tb.SelectionStart = tb.TextLength;
+            tb.ScrollToCaret();
         }
 
         private void llSendClear_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            tbSend.Text = "";
+            tbSend.Text = string.Empty;
         }
 
         private void llRecClear_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            tbMsg.Text = "";
+            tbMsg.Text = string.Empty;
         }
 
-        private void llDoorGetCard_Click(object sender, EventArgs e)
+        private void Form125GateApp_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (!DeviceReady()) return;
-            lbNum.Text = "...";
-            lbName.Text = "...";
-            lbSex.Text = "...";
-            lbDoorState.Text = "...";
-            lbDoorCard.Text = "...";
-            Random r = new Random();
-            byte comTpye = ConsumeType.getType(ConsumeType.RS485, ConsumeType.WIRED);
-            byte order = Protocol.getOrder(true, false, false, 2, false);
-            byte[] local = new byte[4];
-            byte[] target = { 0x00, 0x00, 0x03, 0x01 };
-            byte[] content = { 0x00 };
-            byte[] buf = Protocol.sendMsg(comTpye, order, (byte)r.Next(100), local, target, Protocol.SingleCard_REQ, content);
-            tbSend.AppendText(Protocol.byteToHexString(buf) + "\n");
-            ComHelper.sp.Write(buf, 0, buf.Length);
+            if (_monitorPage != null)
+            {
+                _monitorPage.StopPollingIfRunning();
+            }
+            if (_protocol != null)
+            {
+                _protocol.Dispose();
+            }
         }
-
-        private void llZCGetCard_Click(object sender, EventArgs e)
-        {
-            if (!DeviceReady()) return;
-            lbCardZC.Text = "...";
-            Random r = new Random();
-            byte comTpye = ConsumeType.getType(ConsumeType.RS485, ConsumeType.WIRED);
-            byte order = Protocol.getOrder(true, false, false, 2, false);
-            byte[] local = new byte[4];
-            byte[] target = { 0x00, 0x00, 0x03, 0x01 };
-            byte[] content = { 0x00 };
-            byte[] buf = Protocol.sendMsg(comTpye, order, (byte)r.Next(100), local, target, Protocol.SingleCard_REQ, content);
-            tbSend.AppendText(Protocol.byteToHexString(buf) + "\n");
-            ComHelper.sp.Write(buf, 0, buf.Length);
-        }
-
-        
-
-
-
-
     }
 }

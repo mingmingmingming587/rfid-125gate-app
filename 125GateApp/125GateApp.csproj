@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>_125GateApp</RootNamespace>
     <AssemblyName>125GateApp</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -39,14 +39,17 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Interfaces">
-      <HintPath>D:\FTableExp\FTableExp\bin\Interfaces.dll</HintPath>
+      <HintPath>lib\Interfaces.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="IrisSkin4">
-      <HintPath>D:\FTableExp\FTableExp\bin\IrisSkin4.dll</HintPath>
+      <HintPath>lib\IrisSkin4.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=4.5.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\FTableExp\FTableExp\bin\Newtonsoft.Json.dll</HintPath>
+      <HintPath>lib\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -66,10 +69,28 @@
     <Compile Include="Form125GateApp.Designer.cs">
       <DependentUpon>Form125GateApp.cs</DependentUpon>
     </Compile>
-    <Compile Include="ExtraPages.cs" />
     <Compile Include="JsonFormat.cs" />
+    <Compile Include="Models\CampusModels.cs" />
+    <Compile Include="Pages\AccessLogsPage.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Pages\CardManagementPage.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Pages\DeviceDebugPage.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Pages\GateMonitorPage.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Pages\RegisterPage.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\AccessEvaluator.cs" />
+    <Compile Include="Services\GateProtocolService.cs" />
+    <Compile Include="UI\CampusTheme.cs" />
     <EmbeddedResource Include="Form125GateApp.resx">
       <DependentUpon>Form125GateApp.cs</DependentUpon>
     </EmbeddedResource>
@@ -103,5 +124,3 @@
   </Target>
   -->
 </Project>
-
-
