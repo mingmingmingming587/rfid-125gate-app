@@ -25,6 +25,7 @@ namespace _125GateApp.Pages
         private int _autoCloseRemaining = 0;
         private int _alarmRemaining = 0;
         private string _lastDebouncedCard = string.Empty;
+        private string _lastPresentCard = string.Empty;
         private string _lastDeniedCard = string.Empty;
         private DateTime _lastSwipeTime = DateTime.MinValue;
         private string _pendingSwipeSource = "硬件读卡";
@@ -33,6 +34,7 @@ namespace _125GateApp.Pages
         // Controls
         private Button btnSingleSwipe;
         private CheckBox chkAutoPoll;
+        private Label lblAngleTitle;
         private ComboBox cbOpenAngle;
         private CheckBox chkAutoClose;
         private Button btnManualOpen;
@@ -181,20 +183,18 @@ namespace _125GateApp.Pages
             chkAutoPoll.Margin = new Padding(8, 6, 8, 0);
             chkAutoPoll.CheckedChanged += ChkAutoPoll_CheckedChanged;
 
-            Label lblAngle = new Label();
-            lblAngle.Text = "开闸角度:";
-            lblAngle.Font = CampusTheme.BodyFont;
-            lblAngle.AutoSize = true;
-            lblAngle.Margin = new Padding(6, 7, 2, 0);
+            lblAngleTitle = new Label();
+            lblAngleTitle.Text = _settings.UseServoGate ? "舵机角度:" : "开闸角度:";
+            lblAngleTitle.Font = CampusTheme.BodyFont;
+            lblAngleTitle.AutoSize = true;
+            lblAngleTitle.Margin = new Padding(6, 7, 2, 0);
 
             cbOpenAngle = new ComboBox();
             cbOpenAngle.DropDownStyle = ComboBoxStyle.DropDownList;
             cbOpenAngle.Font = CampusTheme.BodyFont;
             cbOpenAngle.Width = 68;
             cbOpenAngle.Margin = new Padding(0, 3, 6, 0);
-            cbOpenAngle.Items.AddRange(new object[] { "90", "120", "180" });
-            cbOpenAngle.Text = _settings.OpenAngle.ToString();
-            if (cbOpenAngle.SelectedIndex < 0) cbOpenAngle.SelectedIndex = 0;
+            RefreshAngleComboItems();
 
             chkAutoClose = new CheckBox();
             chkAutoClose.Text = "延时自动关门";
@@ -227,7 +227,7 @@ namespace _125GateApp.Pages
 
             flow.Controls.Add(btnSingleSwipe);
             flow.Controls.Add(chkAutoPoll);
-            flow.Controls.Add(lblAngle);
+            flow.Controls.Add(lblAngleTitle);
             flow.Controls.Add(cbOpenAngle);
             flow.Controls.Add(chkAutoClose);
             flow.Controls.Add(btnManualOpen);
@@ -441,9 +441,27 @@ namespace _125GateApp.Pages
         public void SyncSettings()
         {
             _pollTimer.Interval = Math.Max(300, _settings.PollIntervalMs);
-            cbOpenAngle.Text = _settings.OpenAngle.ToString();
+            lblAngleTitle.Text = _settings.UseServoGate ? "舵机角度:" : "开闸角度:";
+            RefreshAngleComboItems();
             chkAutoClose.Checked = _settings.AutoCloseEnabled;
             UpdateCountdownLabel();
+        }
+
+        private void RefreshAngleComboItems()
+        {
+            cbOpenAngle.Items.Clear();
+            cbOpenAngle.Items.AddRange(new object[] { "90", "120", "180" });
+            int configuredVal = _settings.UseServoGate ? _settings.ServoOpenValue : _settings.OpenAngle;
+            string configuredStr = configuredVal.ToString();
+            if (!cbOpenAngle.Items.Contains(configuredStr))
+            {
+                cbOpenAngle.Items.Insert(0, configuredStr);
+            }
+            cbOpenAngle.Text = configuredStr;
+            if (cbOpenAngle.SelectedIndex < 0 && cbOpenAngle.Items.Count > 0)
+            {
+                cbOpenAngle.SelectedIndex = 0;
+            }
         }
 
         public void RefreshSimulationDropdown()
@@ -495,6 +513,10 @@ namespace _125GateApp.Pages
 
         private void ChkAutoPoll_CheckedChanged(object sender, EventArgs e)
         {
+            _lastPresentCard = string.Empty;
+            _lastDebouncedCard = string.Empty;
+            _lastDeniedCard = string.Empty;
+
             if (chkAutoPoll.Checked)
             {
                 if (!_protocol.IsSimulationMode && !_protocol.IsPortOpen)
@@ -596,7 +618,8 @@ namespace _125GateApp.Pages
 
             if (!e.CardFound)
             {
-                // 卡片移开感应区（0xFF）时重置防连刷状态，下次放卡可立即响应
+                // 卡片移开感应区（0xFF）时重置驻留锁与防连刷状态，下次放卡可立即响应
+                _lastPresentCard = string.Empty;
                 _lastDebouncedCard = string.Empty;
                 _lastDeniedCard = string.Empty;
 
@@ -610,9 +633,14 @@ namespace _125GateApp.Pages
                 return;
             }
 
-            // 自动轮询防连刷去抖：合法卡按去抖秒数防连刷；同一张被拦截的非法卡一直贴着不移开时，避免反复循环拉响警报
+            // 自动轮询防重复触发：同一张卡（无论合法还是非法）持续放在感应区未移开（未检测到 0xFF）时不重复开闸/报警
             if (chkAutoPoll.Checked)
             {
+                if (_settings.RequireCardRemovalToReswipe &&
+                    string.Equals(e.CardNumber, _lastPresentCard, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
                 if (string.Equals(e.CardNumber, _lastDeniedCard, StringComparison.OrdinalIgnoreCase))
                 {
                     return;
@@ -624,6 +652,7 @@ namespace _125GateApp.Pages
                 }
             }
 
+            _lastPresentCard = e.CardNumber;
             _lastDebouncedCard = e.CardNumber;
             _lastSwipeTime = DateTime.Now;
 
@@ -667,9 +696,8 @@ namespace _125GateApp.Pages
                 StopAlarmVisualAndDevice(_isAlarming);
                 SetBanner(decision.Reason, CampusTheme.SuccessGreen, CampusTheme.SuccessSoft);
 
-                int angle = GetSelectedAngle();
                 string err;
-                if (_protocol.ControlStepMotor(0x01, angle, out err))
+                if (ExecuteGateAction(true, out err))
                 {
                     SetDoorOpenState(true);
                 }
@@ -731,7 +759,7 @@ namespace _125GateApp.Pages
         {
             StopAlarmVisualAndDevice(_isAlarming);
             string err;
-            if (_protocol.ControlStepMotor(0x01, GetSelectedAngle(), out err))
+            if (ExecuteGateAction(true, out err))
             {
                 SetDoorOpenState(true);
                 SetBanner("管理员手动开闸放行", CampusTheme.NavyAccent, CampusTheme.InfoSoft);
@@ -748,11 +776,11 @@ namespace _125GateApp.Pages
             _autoCloseTimer.Stop();
             _autoCloseRemaining = 0;
             string err;
-            if (_protocol.ControlStepMotor(0x02, GetSelectedAngle(), out err))
+            if (ExecuteGateAction(false, out err))
             {
                 SetDoorOpenState(false);
                 SetBanner("已发送手动关闸复位指令", CampusTheme.NavyHeader, CampusTheme.InfoSoft);
-                RecordControlLog("手动关闸", "管理员手动反转关闸复位");
+                RecordControlLog("手动关闸", "管理员手动关闸复位");
             }
             else
             {
@@ -862,6 +890,16 @@ namespace _125GateApp.Pages
             pnlGateCanvas.Invalidate();
         }
 
+        private bool ExecuteGateAction(bool open, out string errorMsg)
+        {
+            if (_settings.UseServoGate)
+            {
+                int targetVal = open ? GetSelectedAngle() : _settings.ServoCloseValue;
+                return _protocol.ControlServo(targetVal, open, out errorMsg);
+            }
+            return _protocol.ControlStepMotor(open ? (byte)0x01 : (byte)0x02, GetSelectedAngle(), out errorMsg);
+        }
+
         private void AutoCloseTimer_Tick(object sender, EventArgs e)
         {
             _autoCloseRemaining--;
@@ -869,11 +907,11 @@ namespace _125GateApp.Pages
             {
                 _autoCloseTimer.Stop();
                 string err;
-                if (_protocol.ControlStepMotor(0x02, GetSelectedAngle(), out err))
+                if (ExecuteGateAction(false, out err))
                 {
                     _isDoorOpen = false;
-                    SetBanner("延时结束，已自动反转关闸恢复待机", CampusTheme.NavyHeader, CampusTheme.InfoSoft);
-                    RecordControlLog("自动关闸", "开闸延时结束后自动反转复位");
+                    SetBanner("延时结束，已自动关闸复位恢复待机", CampusTheme.NavyHeader, CampusTheme.InfoSoft);
+                    RecordControlLog("自动关闸", "开闸延时结束后自动关闸复位");
                 }
                 else
                 {
@@ -932,9 +970,10 @@ namespace _125GateApp.Pages
             }
             else if (_isDoorOpen)
             {
+                string actuatorName = _settings.UseServoGate ? "舵机" : "步进电机";
                 doorText = _autoCloseRemaining > 0
-                    ? string.Format("闸机已开启（{0} 秒后自动反转关闸）", _autoCloseRemaining)
-                    : "闸机已开启（等待手动关闸）";
+                    ? string.Format("{0}已开启（{1} 秒后自动关闸复位）", actuatorName, _autoCloseRemaining)
+                    : string.Format("{0}已开启（等待手动关闸）", actuatorName);
             }
             else
             {

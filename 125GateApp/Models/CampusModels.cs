@@ -184,11 +184,15 @@ namespace _125GateApp.Models
     /// </summary>
     public class AppSettings
     {
+        public bool UseServoGate { get; set; }
         public int OpenAngle { get; set; }
+        public int ServoOpenValue { get; set; }
+        public int ServoCloseValue { get; set; }
         public bool AutoCloseEnabled { get; set; }
         public int AutoCloseSeconds { get; set; }
         public int PollIntervalMs { get; set; }
         public int DebounceSeconds { get; set; }
+        public bool RequireCardRemovalToReswipe { get; set; }
         public int AlarmAutoStopSeconds { get; set; }
         public bool EnableAcoustoAlarm { get; set; }
         public bool EnableOnboardBuzzer { get; set; }
@@ -197,11 +201,15 @@ namespace _125GateApp.Models
 
         public AppSettings()
         {
+            UseServoGate = true;
             OpenAngle = 90;
+            ServoOpenValue = 90;
+            ServoCloseValue = 0;
             AutoCloseEnabled = true;
             AutoCloseSeconds = 5;
             PollIntervalMs = 800;
             DebounceSeconds = 3;
+            RequireCardRemovalToReswipe = true;
             AlarmAutoStopSeconds = 3;
             EnableAcoustoAlarm = true;
             EnableOnboardBuzzer = true;

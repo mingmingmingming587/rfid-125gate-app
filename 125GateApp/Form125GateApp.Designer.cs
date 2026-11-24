@@ -88,7 +88,7 @@
             this.lblAppSub.ForeColor = System.Drawing.Color.FromArgb(191, 219, 254);
             this.lblAppSub.Location = new System.Drawing.Point(15, 36);
             this.lblAppSub.Name = "lblAppSub";
-            this.lblAppSub.Text = "F-Table 实验平台综合应用  |  支持 EM4100/T5557 读卡 · 步进电机道闸 · 声光报警 · 无硬件仿真测试";
+            this.lblAppSub.Text = "F-Table 实验平台综合应用  |  支持 EM4100/T5557 读卡 · 舵机/步进电机道闸 · 声光报警 · 无硬件仿真测试";
 
             // 
             // flowHeaderRight

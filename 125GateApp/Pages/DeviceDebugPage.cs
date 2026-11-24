@@ -22,15 +22,20 @@ namespace _125GateApp.Pages
         private Label lblSerialState;
 
         private Label lblReaderResult;
+        private ComboBox cbActuatorType;
+        private NumericUpDown nudServoOpen;
+        private NumericUpDown nudServoClose;
         private NumericUpDown nudAngle;
         private NumericUpDown nudPollMs;
         private NumericUpDown nudDebounceSec;
         private NumericUpDown nudAutoCloseSec;
         private NumericUpDown nudAlarmAutoStopSec;
+        private CheckBox chkRequireRemoval;
         private CheckBox chkUseAcousto;
         private CheckBox chkUseBuzzer;
         private ComboBox cbGateZone;
 
+        private NumericUpDown nudServoTest;
         private NumericUpDown nudTestAngle;
         private Label lblActuatorResult;
 
@@ -207,45 +212,66 @@ namespace _125GateApp.Pages
             rfRow.Controls.Add(btnRfOff);
             tbl.Controls.Add(rfRow, 1, 0);
 
-            AddRowLabel(tbl, 1, "当前门区：");
-            cbGateZone = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = CampusTheme.BodyFont, Width = 175 };
+            AddRowLabel(tbl, 1, "门区 / 执行：");
+            FlowLayoutPanel zoneRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
+            cbGateZone = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = CampusTheme.BodyFont, Width = 148 };
             cbGateZone.Items.AddRange(CampusZones.All);
-            tbl.Controls.Add(cbGateZone, 1, 1);
+            Label z1 = new Label { Text = "道闸:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(4, 5, 2, 0) };
+            cbActuatorType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = CampusTheme.SmallFont, Width = 112 };
+            cbActuatorType.Items.AddRange(new object[] { "舵机(020B·推荐)", "步进电机(020B)" });
+            zoneRow.Controls.Add(cbGateZone);
+            zoneRow.Controls.Add(z1);
+            zoneRow.Controls.Add(cbActuatorType);
+            tbl.Controls.Add(zoneRow, 1, 1);
 
-            AddRowLabel(tbl, 2, "角度 / 关门：");
+            AddRowLabel(tbl, 2, "开闸 / 复位：");
             FlowLayoutPanel timingRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
-            nudAngle = new NumericUpDown { Minimum = 30, Maximum = 360, Increment = 15, Width = 58, Font = CampusTheme.BodyFont };
-            Label l1 = new Label { Text = "°  自动关门:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
-            nudAutoCloseSec = new NumericUpDown { Minimum = 2, Maximum = 30, Width = 48, Font = CampusTheme.BodyFont };
-            Label l2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
+            Label s1 = new Label { Text = "舵机开:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(0, 5, 2, 0) };
+            nudServoOpen = new NumericUpDown { Minimum = 0, Maximum = 200, Increment = 5, Width = 50, Font = CampusTheme.BodyFont };
+            Label s2 = new Label { Text = "关:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(3, 5, 2, 0) };
+            nudServoClose = new NumericUpDown { Minimum = 0, Maximum = 200, Increment = 5, Width = 50, Font = CampusTheme.BodyFont };
+            Label l0 = new Label { Text = "步进:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(4, 5, 2, 0) };
+            nudAngle = new NumericUpDown { Minimum = 30, Maximum = 360, Increment = 15, Width = 50, Font = CampusTheme.BodyFont };
+            Label l1 = new Label { Text = "°", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(1, 5, 0, 0) };
+            timingRow.Controls.Add(s1);
+            timingRow.Controls.Add(nudServoOpen);
+            timingRow.Controls.Add(s2);
+            timingRow.Controls.Add(nudServoClose);
+            timingRow.Controls.Add(l0);
             timingRow.Controls.Add(nudAngle);
             timingRow.Controls.Add(l1);
-            timingRow.Controls.Add(nudAutoCloseSec);
-            timingRow.Controls.Add(l2);
             tbl.Controls.Add(timingRow, 1, 2);
 
-            AddRowLabel(tbl, 3, "轮询 / 去抖：");
+            AddRowLabel(tbl, 3, "关门 / 轮询：");
             FlowLayoutPanel pollRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
-            nudPollMs = new NumericUpDown { Minimum = 300, Maximum = 5000, Increment = 100, Width = 64, Font = CampusTheme.BodyFont };
-            Label p1 = new Label { Text = "ms  防连刷:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
-            nudDebounceSec = new NumericUpDown { Minimum = 1, Maximum = 15, Width = 48, Font = CampusTheme.BodyFont };
-            Label p2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
+            Label l2 = new Label { Text = "关门:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(0, 5, 2, 0) };
+            nudAutoCloseSec = new NumericUpDown { Minimum = 2, Maximum = 30, Width = 44, Font = CampusTheme.BodyFont };
+            Label l3 = new Label { Text = "秒 轮询:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
+            nudPollMs = new NumericUpDown { Minimum = 300, Maximum = 5000, Increment = 100, Width = 58, Font = CampusTheme.BodyFont };
+            Label p1 = new Label { Text = "ms 去抖:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
+            nudDebounceSec = new NumericUpDown { Minimum = 1, Maximum = 15, Width = 42, Font = CampusTheme.BodyFont };
+            Label p2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(1, 5, 0, 0) };
+            pollRow.Controls.Add(l2);
+            pollRow.Controls.Add(nudAutoCloseSec);
+            pollRow.Controls.Add(l3);
             pollRow.Controls.Add(nudPollMs);
             pollRow.Controls.Add(p1);
             pollRow.Controls.Add(nudDebounceSec);
             pollRow.Controls.Add(p2);
             tbl.Controls.Add(pollRow, 1, 3);
 
-            AddRowLabel(tbl, 4, "报警设置：");
+            AddRowLabel(tbl, 4, "报警 / 刷卡：");
             FlowLayoutPanel alarmOpt = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
-            chkUseAcousto = new CheckBox { Text = "声光报警(0205)", AutoSize = true, Font = CampusTheme.SmallFont };
-            chkUseBuzzer = new CheckBox { Text = "板载蜂鸣(0301)", AutoSize = true, Font = CampusTheme.SmallFont };
-            Label a1 = new Label { Text = "停警:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 2, 0) };
-            nudAlarmAutoStopSec = new NumericUpDown { Minimum = 0, Maximum = 30, Width = 44, Font = CampusTheme.BodyFont };
-            Label a2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(1, 5, 4, 0) };
-            Button btnSaveCfg = new Button { Text = "保存参数", Width = 78, Height = 25 };
+            chkRequireRemoval = new CheckBox { Text = "移卡再刷", AutoSize = true, Font = CampusTheme.SmallFont };
+            chkUseAcousto = new CheckBox { Text = "声光0205", AutoSize = true, Font = CampusTheme.SmallFont };
+            chkUseBuzzer = new CheckBox { Text = "蜂鸣0301", AutoSize = true, Font = CampusTheme.SmallFont };
+            Label a1 = new Label { Text = "停警:", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(2, 5, 1, 0) };
+            nudAlarmAutoStopSec = new NumericUpDown { Minimum = 0, Maximum = 30, Width = 42, Font = CampusTheme.BodyFont };
+            Label a2 = new Label { Text = "秒", AutoSize = true, Font = CampusTheme.SmallFont, Margin = new Padding(1, 5, 3, 0) };
+            Button btnSaveCfg = new Button { Text = "保存参数", Width = 74, Height = 25 };
             CampusTheme.StylePrimaryButton(btnSaveCfg, CampusTheme.NavyAccent);
             btnSaveCfg.Click += BtnSaveCfg_Click;
+            alarmOpt.Controls.Add(chkRequireRemoval);
             alarmOpt.Controls.Add(chkUseAcousto);
             alarmOpt.Controls.Add(chkUseBuzzer);
             alarmOpt.Controls.Add(a1);
@@ -265,7 +291,7 @@ namespace _125GateApp.Pages
         private Panel CreateActuatorDebugCard()
         {
             Panel body;
-            Panel card = CreateCardContainer("3. 门禁执行器联调（步进电机 / 声光报警 / 蜂鸣器）", out body);
+            Panel card = CreateCardContainer("3. 门禁执行器联调（舵机 / 步进电机 / 声光报警 / 蜂鸣器）", out body);
 
             TableLayoutPanel tbl = new TableLayoutPanel();
             tbl.Dock = DockStyle.Top;
@@ -274,8 +300,29 @@ namespace _125GateApp.Pages
             tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 106F));
             tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
-            AddRowLabel(tbl, 0, "步进电机020B：");
-            FlowLayoutPanel motorRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
+            AddRowLabel(tbl, 0, "舵机 020B：");
+            FlowLayoutPanel servoRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0) };
+            nudServoTest = new NumericUpDown { Minimum = 0, Maximum = 200, Value = 90, Increment = 5, Width = 54, Font = CampusTheme.BodyFont };
+            Button btnServoSend = new Button { Text = "转至该值", Width = 72, Height = 26 };
+            CampusTheme.StylePrimaryButton(btnServoSend, CampusTheme.NavyAccent);
+            btnServoSend.Click += delegate { RunServoTest((int)nudServoTest.Value, (int)nudServoTest.Value > (int)nudServoClose.Value); };
+
+            Button btnServoOpen = new Button { Text = "舵机开闸", Width = 74, Height = 26 };
+            CampusTheme.StylePrimaryButton(btnServoOpen, CampusTheme.SuccessGreen);
+            btnServoOpen.Click += delegate { RunServoTest((int)nudServoOpen.Value, true); };
+
+            Button btnServoClose = new Button { Text = "关闸复位", Width = 74, Height = 26 };
+            CampusTheme.StyleSecondaryButton(btnServoClose);
+            btnServoClose.Click += delegate { RunServoTest((int)nudServoClose.Value, false); };
+
+            servoRow.Controls.Add(nudServoTest);
+            servoRow.Controls.Add(btnServoSend);
+            servoRow.Controls.Add(btnServoOpen);
+            servoRow.Controls.Add(btnServoClose);
+            tbl.Controls.Add(servoRow, 1, 0);
+
+            AddRowLabel(tbl, 1, "步进电机020B：");
+            FlowLayoutPanel motorRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 4, 0, 2) };
             nudTestAngle = new NumericUpDown { Minimum = 15, Maximum = 360, Value = 90, Increment = 15, Width = 58, Font = CampusTheme.BodyFont };
             Button btnFwd = new Button { Text = "正转开闸", Width = 80, Height = 26 };
             CampusTheme.StylePrimaryButton(btnFwd, CampusTheme.SuccessGreen);
@@ -288,9 +335,9 @@ namespace _125GateApp.Pages
             motorRow.Controls.Add(nudTestAngle);
             motorRow.Controls.Add(btnFwd);
             motorRow.Controls.Add(btnRev);
-            tbl.Controls.Add(motorRow, 1, 0);
+            tbl.Controls.Add(motorRow, 1, 1);
 
-            AddRowLabel(tbl, 1, "声光报警0205：");
+            AddRowLabel(tbl, 2, "声光报警0205：");
             FlowLayoutPanel acoustoRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 4, 0, 2) };
             Button btnAcOn = new Button { Text = "开启报警", Width = 82, Height = 26 };
             CampusTheme.StylePrimaryButton(btnAcOn, CampusTheme.DangerRed);
@@ -308,9 +355,9 @@ namespace _125GateApp.Pages
             };
             acoustoRow.Controls.Add(btnAcOn);
             acoustoRow.Controls.Add(btnAcOff);
-            tbl.Controls.Add(acoustoRow, 1, 1);
+            tbl.Controls.Add(acoustoRow, 1, 2);
 
-            AddRowLabel(tbl, 2, "板载蜂鸣0301：");
+            AddRowLabel(tbl, 3, "板载蜂鸣0301：");
             FlowLayoutPanel beepRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 4, 0, 2) };
             Button btnBeepOn = new Button { Text = "鸣响测试", Width = 82, Height = 26 };
             CampusTheme.StylePrimaryButton(btnBeepOn, CampusTheme.WarningAmber);
@@ -328,11 +375,11 @@ namespace _125GateApp.Pages
             };
             beepRow.Controls.Add(btnBeepOn);
             beepRow.Controls.Add(btnBeepOff);
-            tbl.Controls.Add(beepRow, 1, 2);
+            tbl.Controls.Add(beepRow, 1, 3);
 
-            AddRowLabel(tbl, 3, "执行反馈：");
+            AddRowLabel(tbl, 4, "执行反馈：");
             lblActuatorResult = new Label { Text = "待调试", Font = CampusTheme.BodyBoldFont, ForeColor = CampusTheme.TextMuted, AutoSize = true, Margin = new Padding(2, 6, 2, 2) };
-            tbl.Controls.Add(lblActuatorResult, 1, 3);
+            tbl.Controls.Add(lblActuatorResult, 1, 4);
 
             body.Controls.Add(tbl);
             return card;
@@ -428,11 +475,16 @@ namespace _125GateApp.Pages
             cbGateZone.Text = _settings.CurrentGateZone;
             if (cbGateZone.SelectedIndex < 0) cbGateZone.SelectedIndex = 0;
 
+            cbActuatorType.SelectedIndex = _settings.UseServoGate ? 0 : 1;
+            nudServoOpen.Value = ClampNumeric(nudServoOpen, _settings.ServoOpenValue);
+            nudServoClose.Value = ClampNumeric(nudServoClose, _settings.ServoCloseValue);
+            nudServoTest.Value = ClampNumeric(nudServoTest, _settings.ServoOpenValue);
             nudAngle.Value = ClampNumeric(nudAngle, _settings.OpenAngle);
             nudPollMs.Value = ClampNumeric(nudPollMs, _settings.PollIntervalMs);
             nudDebounceSec.Value = ClampNumeric(nudDebounceSec, _settings.DebounceSeconds);
             nudAutoCloseSec.Value = ClampNumeric(nudAutoCloseSec, _settings.AutoCloseSeconds);
             nudAlarmAutoStopSec.Value = ClampNumeric(nudAlarmAutoStopSec, _settings.AlarmAutoStopSeconds);
+            chkRequireRemoval.Checked = _settings.RequireCardRemovalToReswipe;
             chkUseAcousto.Checked = _settings.EnableAcoustoAlarm;
             chkUseBuzzer.Checked = _settings.EnableOnboardBuzzer;
 
@@ -533,11 +585,15 @@ namespace _125GateApp.Pages
 
         private void BtnSaveCfg_Click(object sender, EventArgs e)
         {
+            _settings.UseServoGate = (cbActuatorType.SelectedIndex == 0);
+            _settings.ServoOpenValue = (int)nudServoOpen.Value;
+            _settings.ServoCloseValue = (int)nudServoClose.Value;
             _settings.OpenAngle = (int)nudAngle.Value;
             _settings.PollIntervalMs = (int)nudPollMs.Value;
             _settings.DebounceSeconds = (int)nudDebounceSec.Value;
             _settings.AutoCloseSeconds = (int)nudAutoCloseSec.Value;
             _settings.AlarmAutoStopSeconds = (int)nudAlarmAutoStopSec.Value;
+            _settings.RequireCardRemovalToReswipe = chkRequireRemoval.Checked;
             _settings.EnableAcoustoAlarm = chkUseAcousto.Checked;
             _settings.EnableOnboardBuzzer = chkUseBuzzer.Checked;
             _settings.CurrentGateZone = cbGateZone.Text;
@@ -579,6 +635,21 @@ namespace _125GateApp.Pages
             {
                 lblReaderResult.Text = on ? "已发送开启射频场指令" : "已发送关闭射频场指令";
                 lblReaderResult.ForeColor = CampusTheme.NavyAccent;
+            }
+        }
+
+        private void RunServoTest(int value, bool isOpening)
+        {
+            string err;
+            if (!_protocol.ControlServo(value, isOpening, out err))
+            {
+                lblActuatorResult.Text = err;
+                lblActuatorResult.ForeColor = CampusTheme.DangerRed;
+            }
+            else
+            {
+                lblActuatorResult.Text = string.Format("已下发舵机{0}指令 ({1})", isOpening ? "开闸" : "关闸复位", value);
+                lblActuatorResult.ForeColor = CampusTheme.NavyAccent;
             }
         }
 

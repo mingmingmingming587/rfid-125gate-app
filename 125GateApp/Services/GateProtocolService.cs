@@ -60,7 +60,7 @@ namespace _125GateApp.Services
     public class GateProtocolService : IDisposable
     {
         private static readonly byte[] TargetReader125K = new byte[] { 0x00, 0x00, 0x03, 0x01 };
-        private static readonly byte[] TargetStepMotor = new byte[] { 0x00, 0x00, 0x02, 0x0B };
+        private static readonly byte[] TargetActuator020B = new byte[] { 0x00, 0x00, 0x02, 0x0B };
         private static readonly byte[] TargetAcoustoAlarm = new byte[] { 0x00, 0x00, 0x02, 0x05 };
         private static readonly byte[] LocalHostId = new byte[] { 0x00, 0x00, 0x00, 0x00 };
 
@@ -83,6 +83,9 @@ namespace _125GateApp.Services
 
         private CardReadSource _pendingReadSource = CardReadSource.GateMonitorTab;
         private byte _lastMotorDirection = 0x01;
+        private int _lastServoTargetValue = 90;
+        private bool _lastServoOpening = true;
+        private bool _lastAcoustoTurnOn = false;
         private bool _lastRfSwitchTarget = true;
 
         public bool IsSimulationMode { get; set; }
@@ -273,16 +276,35 @@ namespace _125GateApp.Services
                     });
                 }
             }
+            else if (MatchesCode(p.OrderCode, Protocol.STEERING_ACK))
+            {
+                bool ok = content.Length >= 3 && content[2] == 0x01;
+                string msg = ok
+                    ? string.Format(_lastServoOpening ? "舵机开闸到位（目标 {0}）" : "舵机关闸复位（目标 {0}）", _lastServoTargetValue)
+                    : "舵机执行失败，请检查020B舵机连接";
+                if (MotorActionCompleted != null)
+                {
+                    MotorActionCompleted(this, new MotorResultEventArgs
+                    {
+                        Success = ok,
+                        Direction = _lastServoOpening ? (byte)0x01 : (byte)0x02,
+                        Message = msg
+                    });
+                }
+            }
             else if (MatchesCode(p.OrderCode, Protocol.ACOUSTOALARM_ACK))
             {
                 bool ok = content.Length >= 3 && content[2] == 0x01;
+                string msg = ok
+                    ? (_lastAcoustoTurnOn ? "声光报警器已开启" : "声光报警器已关闭")
+                    : "声光报警器响应失败";
                 if (AlarmActionCompleted != null)
                 {
                     AlarmActionCompleted(this, new AlarmResultEventArgs
                     {
                         Success = ok,
                         IsOnboardBuzzer = false,
-                        Message = ok ? "声光报警器已响应" : "声光报警器响应失败"
+                        Message = msg
                     });
                 }
             }
@@ -418,14 +440,31 @@ namespace _125GateApp.Services
             content[2] = (byte)angle;
 
             string desc = string.Format("步进电机{0} {1}°", direction == 0x01 ? "正转开闸" : "反转关闸", angle);
-            return SendCommand(TargetStepMotor, Protocol.STEPMOTOR_REQ, content, desc, out errorMsg);
+            return SendCommand(TargetActuator020B, Protocol.STEPMOTOR_REQ, content, desc, out errorMsg);
+        }
+
+        public bool ControlServo(int angleOrPulse, bool isOpening, out string errorMsg)
+        {
+            if (angleOrPulse < 0) angleOrPulse = 0;
+            if (angleOrPulse > 200) angleOrPulse = 200;
+
+            _lastServoTargetValue = angleOrPulse;
+            _lastServoOpening = isOpening;
+
+            byte[] content = new byte[9];
+            content[0] = (byte)angleOrPulse;
+
+            string desc = string.Format("舵机{0} ({1})", isOpening ? "开闸" : "关闸复位", angleOrPulse);
+            return SendCommand(TargetActuator020B, Protocol.STEERING_REQ, content, desc, out errorMsg);
         }
 
         public bool ControlAcoustoAlarm(bool turnOn, out string errorMsg)
         {
+            // 官方 AcoustoAlarm.dll 协议约定：0x01 开启报警，0x02 关闭报警（发 0x00 硬件不停止）
+            _lastAcoustoTurnOn = turnOn;
             byte[] content = new byte[]
             {
-                turnOn ? (byte)0x01 : (byte)0x00,
+                turnOn ? (byte)0x01 : (byte)0x02,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
             };
             return SendCommand(TargetAcoustoAlarm, Protocol.ACOUSTOALARM_REQ, content, turnOn ? "开启声光报警器" : "关闭声光报警器", out errorMsg);
@@ -640,6 +679,12 @@ namespace _125GateApp.Services
                     byte status = SimulateMotorFault ? (byte)0xFF : (byte)0x01;
                     ackContent = new byte[] { status, 0x00, status, 0, 0, 0, 0, 0, 0, 0, 0 };
                 }
+                else if (MatchesCode(reqOrderCode, Protocol.STEERING_REQ))
+                {
+                    ackCode = Protocol.STEERING_ACK;
+                    byte status = SimulateMotorFault ? (byte)0xFF : (byte)0x01;
+                    ackContent = new byte[] { status, 0x00, status, 0, 0, 0, 0, 0, 0, 0, 0 };
+                }
                 else if (MatchesCode(reqOrderCode, Protocol.ACOUSTOALARM_REQ))
                 {
                     ackCode = Protocol.ACOUSTOALARM_ACK;
@@ -684,6 +729,7 @@ namespace _125GateApp.Services
             if (code == null || code.Length < 2) return "未知指令";
             if (MatchesCode(code, Protocol.SingleCard_ACK)) return "寻卡响应";
             if (MatchesCode(code, Protocol.STEPMOTOR_ACK)) return "步进电机应答";
+            if (MatchesCode(code, Protocol.STEERING_ACK)) return "舵机应答";
             if (MatchesCode(code, Protocol.ACOUSTOALARM_ACK)) return "声光报警器应答";
             if (MatchesCode(code, Protocol.BuzzerControl_ACK)) return "板载蜂鸣器应答";
             if (MatchesCode(code, Protocol.COMTEST_ACK)) return "串口测试应答";
